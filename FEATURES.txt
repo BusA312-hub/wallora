@@ -1,0 +1,5 @@
+WALLORA CONTROL 2.0 FEATURE MAP
+Dashboard | Print Control | Orders | Clients | Calculator | DPI/Size | Portfolio | Files | Notes | Social | Printer Tests | Apps | Settings
+Responsive: tablet>=600dp => 4 columns, phone => 2 columns
+Home launcher intent enabled
+No third-party Android libraries required

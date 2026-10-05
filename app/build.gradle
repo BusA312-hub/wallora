@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.wallora.home'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.wallora.home'
+        minSdk 26
+        targetSdk 35
+        versionCode 2
+        versionName '2.0'
+    }
+}
