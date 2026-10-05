@@ -4,7 +4,6 @@ import android.app.*;
 import android.os.*;
 import android.content.*;
 import android.content.pm.PackageManager;
-import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -18,274 +17,529 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class MainActivity extends Activity {
-    private static final int GOLD = Color.rgb(220, 171, 72);
-    private static final int GOLD_LIGHT = Color.rgb(255, 220, 150);
-    private static final int WHITE = Color.rgb(245,245,245);
-    private static final int MUTED = Color.rgb(188,188,188);
-    private static final int GLASS = Color.argb(214, 12,12,12);
-    private static final int GLASS_2 = Color.argb(228, 20,20,20);
-    private static final int LINE = Color.argb(170, 111,83,37);
-    private static final int GREEN = Color.rgb(109, 222, 126);
+
+    private static final int GOLD = Color.rgb(214,168,74);
+    private static final int GOLD_LIGHT = Color.rgb(255,216,145);
+    private static final int BG = Color.rgb(7,7,7);
+    private static final int PANEL = Color.argb(225, 15,15,15);
+    private static final int PANEL_2 = Color.argb(235, 28,28,28);
+    private static final int MUTED = Color.rgb(185,185,185);
+    private static final int GREEN = Color.rgb(102,210,110);
+
+    private static final int PICK_CLIENT_PHOTO = 201;
+    private static final int PICK_IDEA_PHOTO = 202;
+    private static final int PICK_BEFORE_PHOTO = 203;
+    private static final int PICK_AFTER_PHOTO = 204;
 
     private final DecimalFormat df = new DecimalFormat("0.##");
     private SharedPreferences prefs;
     private boolean tablet;
-    private LinearLayout page;
+    private boolean powerOn;
+    private boolean expanded;
+    private String lang = "uk";
 
-    @Override public void onCreate(Bundle b) {
+    private LinearLayout page;
+    private FrameLayout rootFrame;
+    private float downY;
+    private boolean handlingGesture = false;
+
+    private Uri pendingClientPhoto;
+    private Uri pendingIdeaPhoto;
+    private Uri pendingBeforePhoto;
+    private Uri pendingAfterPhoto;
+
+    private ImageView clientPhotoPreview;
+    private ImageView ideaPreview;
+    private ImageView beforePreview;
+    private ImageView afterPreview;
+
+    @Override
+    public void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences("wallora", MODE_PRIVATE);
         tablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
+        lang = prefs.getString("lang","uk");
+        powerOn = prefs.getBoolean("power_on", false);
+        expanded = prefs.getBoolean("expanded", false);
         immersive();
-        showDashboard();
+        if(powerOn) showDashboard(); else showPowerScreen();
     }
 
-    @Override public void onResume(){ super.onResume(); immersive(); }
+    @Override public void onResume() {
+        super.onResume();
+        immersive();
+    }
 
-    private void immersive(){
-        getWindow().setStatusBarColor(Color.TRANSPARENT);
+    private void immersive() {
+        getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
         getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-            View.SYSTEM_UI_FLAG_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                View.SYSTEM_UI_FLAG_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
     }
 
-    private int dp(int n){ return (int)(n*getResources().getDisplayMetrics().density+0.5f); }
+    private String tr(String uk, String cz, String en) {
+        if("cz".equals(lang)) return cz;
+        if("en".equals(lang)) return en;
+        return uk;
+    }
 
-    private GradientDrawable rounded(int color, int radius, int strokeColor, int stroke){
-        GradientDrawable g = new GradientDrawable();
+    private int dp(int n){
+        return (int)(n*getResources().getDisplayMetrics().density+0.5f);
+    }
+
+    private GradientDrawable bg(int color, int radius, int strokeColor, int stroke){
+        GradientDrawable g=new GradientDrawable();
         g.setColor(color);
         g.setCornerRadius(dp(radius));
         if(stroke>0) g.setStroke(dp(stroke), strokeColor);
         return g;
     }
 
-    private TextView tv(String s, int sp, int color){
-        TextView t = new TextView(this);
+    private TextView tv(String s,int sp,int color){
+        TextView t=new TextView(this);
         t.setText(s);
         t.setTextSize(sp);
         t.setTextColor(color);
-        t.setIncludeFontPadding(false);
+        t.setPadding(dp(2),dp(2),dp(2),dp(2));
         return t;
     }
 
-    private TextView brandText(String s, int sp){
-        TextView t = tv(s, sp, GOLD_LIGHT);
-        t.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        if(Build.VERSION.SDK_INT >= 21) t.setLetterSpacing(.12f);
+    private TextView label(String s){
+        TextView t=tv(s,12,GOLD_LIGHT);
+        t.setAllCaps(true);
+        t.setLetterSpacing(.12f);
         return t;
     }
 
-    private Space space(int h){ Space s=new Space(this); s.setLayoutParams(new LinearLayout.LayoutParams(1,dp(h))); return s; }
-
-    private LinearLayout glassCard(int radius){
-        LinearLayout c = new LinearLayout(this);
-        c.setOrientation(LinearLayout.VERTICAL);
-        c.setPadding(dp(16),dp(14),dp(16),dp(14));
-        c.setBackground(rounded(GLASS, radius, LINE, 1));
-        return c;
+    private Space space(int h){
+        Space s=new Space(this);
+        s.setLayoutParams(new LinearLayout.LayoutParams(1,dp(h)));
+        return s;
     }
 
-    private Button goldButton(String text){
-        Button b = new Button(this);
+    private Button button(String text){
+        Button b=new Button(this);
         b.setText(text);
-        b.setAllCaps(false);
-        b.setTextColor(Color.BLACK);
+        b.setTextColor(Color.WHITE);
         b.setTextSize(14);
-        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
-        b.setBackground(rounded(GOLD_LIGHT, 14, GOLD_LIGHT, 1));
+        b.setBackground(bg(PANEL_2,14,GOLD,1));
+        b.setPadding(dp(12),dp(10),dp(12),dp(10));
         return b;
     }
 
-    private Button darkButton(String text){
-        Button b = new Button(this);
-        b.setText(text);
-        b.setAllCaps(false);
-        b.setTextColor(WHITE);
-        b.setTextSize(14);
-        b.setGravity(Gravity.CENTER);
-        b.setBackground(rounded(GLASS_2, 14, LINE, 1));
+    private Button goldButton(String text){
+        Button b=button(text);
+        b.setTextColor(Color.BLACK);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setBackground(bg(GOLD_LIGHT,16,GOLD_LIGHT,1));
         return b;
     }
 
     private EditText edit(String hint){
-        EditText e = new EditText(this);
+        EditText e=new EditText(this);
         e.setHint(hint);
-        e.setHintTextColor(Color.rgb(135,135,135));
-        e.setTextColor(WHITE);
-        e.setTextSize(14);
+        e.setHintTextColor(Color.rgb(120,120,120));
+        e.setTextColor(Color.WHITE);
         e.setSingleLine(true);
-        e.setPadding(dp(14),dp(10),dp(14),dp(10));
-        e.setBackground(rounded(GLASS_2, 12, Color.rgb(67,55,35), 1));
+        e.setPadding(dp(14),dp(12),dp(14),dp(12));
+        e.setBackground(bg(PANEL_2,12,Color.rgb(70,70,70),1));
         return e;
     }
 
     private EditText number(String hint){
-        EditText e = edit(hint);
-        e.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        EditText e=edit(hint);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);
         return e;
     }
 
-    private FrameLayout backgroundFrame(){
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundResource(com.wallora.home.R.drawable.wallora_bg);
-        View shade = new View(this);
-        shade.setBackgroundColor(Color.argb(tablet?70:145,0,0,0));
-        root.addView(shade,new FrameLayout.LayoutParams(-1,-1));
-        return root;
+    private LinearLayout card(){
+        LinearLayout c=new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(16),dp(16),dp(16),dp(16));
+        c.setBackground(bg(PANEL,18,Color.rgb(88,67,30),1));
+        return c;
+    }
+
+    private void addCard(View v){
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
+        lp.setMargins(0,0,0,dp(12));
+        page.addView(v,lp);
+    }
+
+    private LinearLayout row(){
+        LinearLayout r=new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        return r;
+    }
+
+    private void applyBackground(View v){
+        try {
+            int id=getResources().getIdentifier("wallora_bg","drawable",getPackageName());
+            if(id!=0) v.setBackgroundResource(id);
+            else v.setBackgroundColor(BG);
+        } catch(Exception e){
+            v.setBackgroundColor(BG);
+        }
+    }
+
+    private ScrollView shell(String titleText, boolean back){
+        tablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
+
+        rootFrame=new FrameLayout(this);
+        applyBackground(rootFrame);
+
+        LinearLayout overlay=new LinearLayout(this);
+        overlay.setOrientation(LinearLayout.VERTICAL);
+        overlay.setPadding(dp(tablet?26:14),dp(14),dp(tablet?26:14),dp(26));
+        overlay.setBackgroundColor(Color.argb(80,0,0,0));
+
+        LinearLayout top=row();
+
+        if(back){
+            Button home=button("‹ WALLORA");
+            home.setOnClickListener(v->showDashboard());
+            top.addView(home,new LinearLayout.LayoutParams(tablet?dp(170):dp(118),dp(48)));
+        }
+
+        TextView title=tv(titleText,tablet?27:20,GOLD_LIGHT);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(0,dp(54),1);
+        tlp.setMargins(dp(10),0,0,0);
+        top.addView(title,tlp);
+
+        Button langBtn=button("🌐 "+lang.toUpperCase());
+        langBtn.setOnClickListener(v->showLanguageDialog());
+        top.addView(langBtn,new LinearLayout.LayoutParams(dp(84),dp(46)));
+
+        Button settings=button("⚙");
+        settings.setOnClickListener(v->showSettings());
+        LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(dp(54),dp(46));
+        slp.setMargins(dp(6),0,0,0);
+        top.addView(settings,slp);
+
+        overlay.addView(top);
+        overlay.addView(space(10));
+
+        page=new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        overlay.addView(page,new LinearLayout.LayoutParams(-1,-2));
+
+        ScrollView sv=new ScrollView(this);
+        sv.setFillViewport(true);
+        sv.addView(overlay);
+        rootFrame.addView(sv,new FrameLayout.LayoutParams(-1,-1));
+
+        installGestures(rootFrame);
+        setContentView(rootFrame);
+        return sv;
+    }
+
+    private void installGestures(View v){
+        v.setOnTouchListener((view,event)->{
+            switch(event.getActionMasked()){
+                case MotionEvent.ACTION_DOWN:
+                    downY=event.getY();
+                    handlingGesture=false;
+                    return false;
+                case MotionEvent.ACTION_MOVE:
+                    if(Math.abs(event.getY()-downY)>dp(35)) handlingGesture=true;
+                    return false;
+                case MotionEvent.ACTION_UP:
+                    float dy=event.getY()-downY;
+                    if(Math.abs(dy)>dp(90)){
+                        if(dy<0){
+                            if(!powerOn){
+                                powerOn=true;
+                                expanded=true;
+                                saveUiState();
+                                restoreBrightness();
+                                showDashboard();
+                            }else if(!expanded){
+                                expanded=true;
+                                saveUiState();
+                                showDashboard();
+                            }
+                        }else{
+                            if(powerOn && expanded){
+                                expanded=false;
+                                saveUiState();
+                                showDashboard();
+                            }
+                        }
+                    }
+                    handlingGesture=false;
+                    return false;
+            }
+            return false;
+        });
+    }
+
+    private void saveUiState(){
+        prefs.edit().putBoolean("power_on",powerOn).putBoolean("expanded",expanded).apply();
+    }
+
+    private void showPowerScreen(){
+        powerOn=false;
+        expanded=false;
+        saveUiState();
+        restoreBrightness();
+
+        rootFrame=new FrameLayout(this);
+        applyBackground(rootFrame);
+
+        LinearLayout dark=new LinearLayout(this);
+        dark.setOrientation(LinearLayout.VERTICAL);
+        dark.setGravity(Gravity.CENTER);
+        dark.setPadding(dp(24),dp(28),dp(24),dp(28));
+        dark.setBackgroundColor(Color.argb(80,0,0,0));
+
+        TextView logo=tv("WALLORA", tablet?48:38, GOLD_LIGHT);
+        logo.setTypeface(Typeface.DEFAULT_BOLD);
+        logo.setLetterSpacing(.14f);
+        logo.setGravity(Gravity.CENTER);
+        dark.addView(logo);
+
+        TextView sub=tv("PRINT YOUR WORLD",14,GOLD_LIGHT);
+        sub.setLetterSpacing(.18f);
+        sub.setGravity(Gravity.CENTER);
+        dark.addView(sub);
+
+        dark.addView(space(tablet?70:45));
+
+        TextView printer=tv("▥",tablet?120:90,GOLD_LIGHT);
+        printer.setGravity(Gravity.CENTER);
+        dark.addView(printer);
+
+        dark.addView(space(24));
+
+        Button power=goldButton("⏻");
+        power.setTextSize(tablet?42:34);
+        power.setOnClickListener(v->{
+            powerOn=true;
+            expanded=true;
+            saveUiState();
+            showDashboard();
+        });
+        LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(tablet?dp(160):dp(135),tablet?dp(160):dp(135));
+        pp.gravity=Gravity.CENTER_HORIZONTAL;
+        dark.addView(power,pp);
+
+        dark.addView(space(18));
+
+        TextView on=tv(tr("УВІМКНУТИ ПРИНТЕР","ZAPNOUT TISKÁRNU","TURN ON PRINTER"),18,GOLD_LIGHT);
+        on.setTypeface(Typeface.DEFAULT_BOLD);
+        on.setGravity(Gravity.CENTER);
+        dark.addView(on);
+
+        TextView hint=tv(tr("Натисніть для запуску або проведіть вгору","Klepněte nebo přejeďte nahoru","Tap or swipe up"),12,MUTED);
+        hint.setGravity(Gravity.CENTER);
+        dark.addView(hint);
+
+        LinearLayout bottom=row();
+        TextView status=tv("●  "+tr("Принтер офлайн","Tiskárna offline","Printer offline"),12,GREEN);
+        bottom.addView(status,new LinearLayout.LayoutParams(0,dp(48),1));
+
+        Button settings=button("⚙ "+tr("Налаштування","Nastavení","Settings"));
+        settings.setOnClickListener(v->showSettings());
+        bottom.addView(settings,new LinearLayout.LayoutParams(tablet?dp(220):dp(170),dp(46)));
+
+        dark.addView(space(30));
+        dark.addView(bottom);
+
+        rootFrame.addView(dark,new FrameLayout.LayoutParams(-1,-1));
+        installGestures(rootFrame);
+        setContentView(rootFrame);
     }
 
     private void showDashboard(){
-        tablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
-        FrameLayout root = backgroundFrame();
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(tablet?28:16),dp(tablet?22:16),dp(tablet?28:16),dp(24));
-        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
-        root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
-        setContentView(root);
+        powerOn=true;
+        saveUiState();
+        shell("WALLORA",false);
 
-        // top brand
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView time = tv(new SimpleDateFormat("HH:mm\nEEE, d MMM", Locale.getDefault()).format(new Date()), tablet?16:12, WHITE);
-        time.setGravity(Gravity.LEFT);
-        top.addView(time,new LinearLayout.LayoutParams(0,dp(tablet?64:50),1));
-        LinearLayout brandBox = new LinearLayout(this);
-        brandBox.setOrientation(LinearLayout.VERTICAL); brandBox.setGravity(Gravity.CENTER);
-        TextView logo = brandText("WALLORA", tablet?42:26); logo.setGravity(Gravity.CENTER);
-        TextView slogan = tv("PRINT YOUR WORLD", tablet?13:9, GOLD_LIGHT); slogan.setGravity(Gravity.CENTER);
-        if(Build.VERSION.SDK_INT>=21) slogan.setLetterSpacing(.28f);
-        brandBox.addView(logo); brandBox.addView(slogan);
-        top.addView(brandBox,new LinearLayout.LayoutParams(0,dp(tablet?82:60),2));
-        TextView status = tv("● ONLINE",tablet?13:10,GREEN); status.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        top.addView(status,new LinearLayout.LayoutParams(0,dp(tablet?64:50),1));
-        content.addView(top);
-        content.addView(space(tablet?16:10));
-
-        if(tablet){
-            LinearLayout infoRow = new LinearLayout(this);
-            infoRow.setOrientation(LinearLayout.HORIZONTAL);
-            LinearLayout current = currentOrderCard();
-            LinearLayout wall = wallParamsCard();
-            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0,dp(190),1); cp.setMargins(0,0,dp(8),0);
-            LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(0,dp(190),1); wp.setMargins(dp(8),0,0,0);
-            infoRow.addView(current,cp); infoRow.addView(wall,wp);
-            content.addView(infoRow);
-        } else {
-            content.addView(currentOrderCard(),new LinearLayout.LayoutParams(-1,-2));
-            content.addView(space(10));
-            content.addView(wallParamsCard(),new LinearLayout.LayoutParams(-1,-2));
+        if(!expanded){
+            LinearLayout compact=card();
+            compact.setGravity(Gravity.CENTER);
+            TextView logo=tv("WALLORA",tablet?48:38,GOLD_LIGHT);
+            logo.setTypeface(Typeface.DEFAULT_BOLD);
+            logo.setGravity(Gravity.CENTER);
+            compact.addView(logo);
+            TextView sub=tv("PRINT YOUR WORLD",13,GOLD_LIGHT);
+            sub.setLetterSpacing(.18f);
+            sub.setGravity(Gravity.CENTER);
+            compact.addView(sub);
+            compact.addView(space(18));
+            TextView status=tv("● ONLINE",16,GREEN);
+            status.setGravity(Gravity.CENTER);
+            compact.addView(status);
+            compact.addView(space(18));
+            TextView hint=tv(tr("Проведіть вгору, щоб відкрити панель","Přejeďte nahoru pro otevření panelu","Swipe up to open control panel"),14,MUTED);
+            hint.setGravity(Gravity.CENTER);
+            compact.addView(hint);
+            addCard(compact);
+            return;
         }
 
-        content.addView(space(tablet?18:12));
+        addCurrentOrderCard();
+        addWallParamsCard();
 
-        String[][] main = {
-            {"▣","PRINT","Новый проект"},
-            {"▧","GALLERY","Галерея работ"},
-            {"◉","CLIENTS","Клиенты"},
-            {"▰","FILES","Файлы"},
-            {"▣","REMOTE PC","Управление ПК"},
-            {"◎","SOCIAL","Соцсети"}
+        String[][] items={
+                {"▣",tr("ДРУК","TISK","PRINT"),tr("Новий проєкт","Nový projekt","New project")},
+                {"▧",tr("ГАЛЕРЕЯ","GALERIE","GALLERY"),tr("Галерея робіт","Galerie prací","Work gallery")},
+                {"◉",tr("КЛІЄНТИ","KLIENTI","CLIENTS"),tr("Клієнти й фото","Klienti a fotky","Clients & photos")},
+                {"▰",tr("ФАЙЛИ","SOUBORY","FILES"),tr("Файли проєкту","Soubory projektu","Project files")},
+                {"▣",tr("ВІДДАЛЕНИЙ ПК","VZDÁLENÝ PC","REMOTE PC"),tr("Керування ПК","Ovládání PC","PC control")},
+                {"◎",tr("СОЦМЕРЕЖІ","SOCIÁLNÍ SÍTĚ","SOCIAL"),tr("Instagram / TikTok","Instagram / TikTok","Instagram / TikTok")}
         };
-        GridLayout grid = new GridLayout(this);
-        grid.setColumnCount(tablet?6:2);
-        for(int i=0;i<main.length;i++){
+
+        GridLayout grid=new GridLayout(this);
+        grid.setColumnCount(tablet?3:2);
+        for(int i=0;i<items.length;i++){
             final int ix=i;
-            LinearLayout tile = premiumTile(main[i][0],main[i][1],main[i][2], i==0);
-            tile.setOnClickListener(v->mainAction(ix));
-            GridLayout.LayoutParams gp = new GridLayout.LayoutParams();
-            gp.width=0; gp.height=dp(tablet?132:118);
+            LinearLayout c=card();
+            c.setGravity(Gravity.CENTER);
+            if(i==0) c.setBackground(bg(Color.argb(220,70,45,10),18,GOLD_LIGHT,2));
+            TextView icon=tv(items[i][0],tablet?34:28,GOLD_LIGHT);
+            icon.setGravity(Gravity.CENTER);
+            c.addView(icon);
+            TextView n=tv(items[i][1],tablet?16:14,Color.WHITE);
+            n.setTypeface(Typeface.DEFAULT_BOLD);
+            n.setGravity(Gravity.CENTER);
+            c.addView(n);
+            TextView d=tv(items[i][2],11,MUTED);
+            d.setGravity(Gravity.CENTER);
+            c.addView(d);
+            c.setOnClickListener(v->mainAction(ix));
+
+            GridLayout.LayoutParams gp=new GridLayout.LayoutParams();
+            gp.width=0;
+            gp.height=dp(tablet?128:118);
             gp.columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1,1f);
             gp.setMargins(dp(5),dp(5),dp(5),dp(5));
-            grid.addView(tile,gp);
+            grid.addView(c,gp);
         }
-        content.addView(grid,new LinearLayout.LayoutParams(-1,-2));
-        content.addView(space(tablet?16:10));
+        page.addView(grid,new LinearLayout.LayoutParams(-1,-2));
 
-        LinearLayout dock = new LinearLayout(this);
-        dock.setOrientation(LinearLayout.HORIZONTAL);
-        dock.setGravity(Gravity.CENTER);
-        dock.setPadding(dp(10),dp(9),dp(10),dp(9));
-        dock.setBackground(rounded(Color.argb(225,8,8,8),18,LINE,1));
-        String[][] apps={
-            {"B","BetterPrint","remote"},{"U","UltraPrint","remote"},{"A","AnyDesk","com.anydesk.anydeskandroid"},
-            {"T","TeamViewer","com.teamviewer.teamviewer.market.mobile"},{"D","Drive","com.google.android.apps.docs"},
-            {"P","Photos","com.google.android.apps.photos"},{"C","Chrome","com.android.chrome"},{"⚙","Settings","settings"}
-        };
-        int max = tablet?apps.length:5;
-        for(int i=0;i<max;i++){
-            final String action=apps[i][2];
-            LinearLayout d = dockItem(apps[i][0],apps[i][1]);
-            d.setOnClickListener(v->{
-                if("remote".equals(action)) showPrintControl();
-                else if("settings".equals(action)) showSettings();
-                else launchAny(action);
-            });
-            dock.addView(d,new LinearLayout.LayoutParams(0,dp(tablet?70:60),1));
-        }
-        content.addView(dock,new LinearLayout.LayoutParams(-1,-2));
+        addCard(makeDock());
+
+        Button off=button("⏻ "+tr("Вимкнути інтерфейс","Vypnout rozhraní","Power off interface"));
+        off.setOnClickListener(v->enterSleepMode());
+        addCard(off);
+
+        TextView swipe=tv("↓ "+tr("Свайп вниз — згорнути панель","Přejetí dolů — sbalit panel","Swipe down — collapse panel"),12,MUTED);
+        swipe.setGravity(Gravity.CENTER);
+        addCard(swipe);
     }
 
-    private LinearLayout currentOrderCard(){
-        LinearLayout c = glassCard(18);
-        TextView h = brandText("ТЕКУЩИЙ ЗАКАЗ", tablet?15:13); c.addView(h);
-        c.addView(space(8));
-        ArrayList<String> orders = loadList("orders");
-        if(orders.isEmpty()){
-            c.addView(tv("Нет активного заказа",tablet?18:16,WHITE));
-            c.addView(space(6));
-            c.addView(tv("Создай заказ — здесь появятся проект, размер и статус.",12,MUTED));
-        } else {
-            String[] p=parts(orders.get(orders.size()-1),7);
-            TextView n=tv(p[0].isEmpty()?"Проект":p[0],tablet?22:18,WHITE); n.setTypeface(Typeface.DEFAULT_BOLD); c.addView(n);
-            c.addView(space(5));
-            c.addView(tv((p[2].isEmpty()?"—":p[2])+" × "+(p[3].isEmpty()?"—":p[3])+" cm",14,WHITE));
-            c.addView(tv("Площадь: "+(p[4].isEmpty()?"—":p[4])+" m²",13,MUTED));
-            c.addView(tv("Статус: "+(p[6].isEmpty()?"Подготовка":p[6]),13,GOLD_LIGHT));
-        }
-        c.setOnClickListener(v->showOrders());
-        return c;
-    }
-
-    private LinearLayout wallParamsCard(){
-        LinearLayout c=glassCard(18);
-        TextView h=brandText("ПАРАМЕТРЫ СТЕНЫ",tablet?15:13); c.addView(h); c.addView(space(8));
-        String[][] rows={{"Ширина","320 cm"},{"Высота","250 cm"},{"Площадь","8.0 m²"},{"Расстояние","5 mm"}};
-        for(String[] r:rows){
-            LinearLayout line=new LinearLayout(this); line.setOrientation(LinearLayout.HORIZONTAL);
-            TextView l=tv(r[0],13,MUTED); TextView v=tv(r[1],13,WHITE); v.setTypeface(Typeface.DEFAULT_BOLD); v.setGravity(Gravity.RIGHT);
-            line.addView(l,new LinearLayout.LayoutParams(0,dp(28),1)); line.addView(v,new LinearLayout.LayoutParams(0,dp(28),1)); c.addView(line);
-        }
-        c.setOnClickListener(v->showCalculator());
-        return c;
-    }
-
-    private LinearLayout premiumTile(String icon,String title,String sub,boolean accent){
-        LinearLayout c=new LinearLayout(this);
-        c.setOrientation(LinearLayout.VERTICAL); c.setGravity(Gravity.CENTER); c.setPadding(dp(8),dp(10),dp(8),dp(8));
-        c.setBackground(rounded(accent?Color.argb(230,45,31,8):Color.argb(220,10,10,10),18,accent?GOLD_LIGHT:LINE,accent?2:1));
-        TextView i=tv(icon,tablet?32:27,GOLD_LIGHT); i.setGravity(Gravity.CENTER); c.addView(i);
+    private void addCurrentOrderCard(){
+        ArrayList<String> orders=loadList("orders");
+        LinearLayout c=card();
+        c.addView(label(tr("ПОТОЧНЕ ЗАМОВЛЕННЯ","AKTUÁLNÍ ZAKÁZKA","CURRENT ORDER")));
         c.addView(space(6));
-        TextView t=tv(title,tablet?15:14,accent?GOLD_LIGHT:WHITE); t.setTypeface(Typeface.DEFAULT_BOLD); t.setGravity(Gravity.CENTER); c.addView(t);
-        c.addView(space(4));
-        TextView s=tv(sub,11,accent?GOLD:MUTED); s.setGravity(Gravity.CENTER); c.addView(s);
-        return c;
+
+        if(orders.isEmpty()){
+            TextView none=tv(tr("Немає активного замовлення","Žádná aktivní zakázka","No active order"),18,Color.WHITE);
+            none.setTypeface(Typeface.DEFAULT_BOLD);
+            c.addView(none);
+            c.addView(tv(tr("Створіть замовлення — тут з’являться фото, статус, розмір і ціна.","Vytvořte zakázku — zde se zobrazí fotky, stav, rozměr a cena.","Create an order — photos, status, size and price will appear here."),12,MUTED));
+            Button add=goldButton("＋ "+tr("Нове замовлення","Nová zakázka","New order"));
+            add.setOnClickListener(v->orderDialog(null,-1));
+            c.addView(space(8)); c.addView(add);
+        } else {
+            int idx=orders.size()-1;
+            String[] p=parts(orders.get(idx),13);
+            TextView n=tv(p[0],20,GOLD_LIGHT); n.setTypeface(Typeface.DEFAULT_BOLD); c.addView(n);
+            c.addView(tv(p[1]+"  •  "+p[2]+" × "+p[3]+" cm  •  "+p[4]+" m²",13,Color.WHITE));
+            c.addView(tv(tr("Ціна: ","Cena: ","Price: ")+p[5]+" Kč",14,GOLD_LIGHT));
+            c.addView(space(8));
+
+            LinearLayout statuses=row();
+            String[] values={"active","progress","done"};
+            String[] labels={
+                    tr("Активне","Aktivní","Active"),
+                    tr("Виконується","Probíhá","In progress"),
+                    tr("Завершено","Dokončeno","Completed")
+            };
+            for(int i=0;i<3;i++){
+                final String val=values[i];
+                Button b=button(labels[i]);
+                if(val.equals(p[6])) b.setBackground(bg(Color.argb(230,90,60,12),14,GOLD_LIGHT,2));
+                b.setOnClickListener(v->{
+                    ArrayList<String> list=loadList("orders");
+                    String[] pp=parts(list.get(idx),13);
+                    pp[6]=val;
+                    list.set(idx,join(pp));
+                    saveList("orders",list);
+                    showDashboard();
+                });
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(48),1);
+                if(i>0) lp.setMargins(dp(5),0,0,0);
+                statuses.addView(b,lp);
+            }
+            c.addView(statuses);
+            c.addView(space(8));
+
+            Button open=button(tr("Відкрити деталі замовлення","Otevřít detail zakázky","Open order details"));
+            final int orderIndex=idx;
+            open.setOnClickListener(v->showOrderDetails(orderIndex));
+            c.addView(open);
+        }
+        addCard(c);
     }
 
-    private LinearLayout dockItem(String icon,String label){
-        LinearLayout c=new LinearLayout(this); c.setOrientation(LinearLayout.VERTICAL); c.setGravity(Gravity.CENTER);
-        TextView i=tv(icon,tablet?20:18,GOLD_LIGHT); i.setTypeface(Typeface.DEFAULT_BOLD); i.setGravity(Gravity.CENTER); c.addView(i);
-        TextView l=tv(label,tablet?9:8,MUTED); l.setGravity(Gravity.CENTER); c.addView(l);
-        return c;
+    private void addWallParamsCard(){
+        LinearLayout c=card();
+        c.addView(label(tr("ПАРАМЕТРИ СТІНИ","PARAMETRY STĚNY","WALL PARAMETERS")));
+        c.addView(space(6));
+        String[][] vals={
+                {tr("Ширина","Šířka","Width"),prefs.getString("wall_w","320")+" cm"},
+                {tr("Висота","Výška","Height"),prefs.getString("wall_h","250")+" cm"},
+                {tr("Площа","Plocha","Area"),prefs.getString("wall_area","8.0")+" m²"},
+                {tr("Відстань","Vzdálenost","Distance"),prefs.getString("wall_dist","5")+" mm"}
+        };
+        for(String[] x:vals){
+            LinearLayout r=row();
+            TextView l=tv(x[0],14,MUTED);
+            TextView v=tv(x[1],15,Color.WHITE);
+            v.setTypeface(Typeface.DEFAULT_BOLD);
+            v.setGravity(Gravity.RIGHT);
+            r.addView(l,new LinearLayout.LayoutParams(0,dp(40),1));
+            r.addView(v,new LinearLayout.LayoutParams(dp(130),dp(40)));
+            c.addView(r);
+        }
+        c.setOnClickListener(v->wallParamsDialog());
+        addCard(c);
+    }
+
+    private LinearLayout makeDock(){
+        LinearLayout dock=card();
+        dock.setOrientation(LinearLayout.HORIZONTAL);
+        String[][] apps={
+                {"B","BetterPrint","com.anydesk.anydeskandroid"},
+                {"U","UltraPrint","com.teamviewer.teamviewer.market.mobile"},
+                {"A","AnyDesk","com.anydesk.anydeskandroid"},
+                {"T","TeamViewer","com.teamviewer.teamviewer.market.mobile"},
+                {"D","Drive","com.google.android.apps.docs"}
+        };
+        for(String[] a:apps){
+            LinearLayout item=new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER);
+            TextView ic=tv(a[0],22,GOLD_LIGHT); ic.setTypeface(Typeface.DEFAULT_BOLD); ic.setGravity(Gravity.CENTER);
+            TextView tx=tv(a[1],9,MUTED); tx.setGravity(Gravity.CENTER);
+            item.addView(ic); item.addView(tx);
+            item.setOnClickListener(v->launchAny(a[2]));
+            dock.addView(item,new LinearLayout.LayoutParams(0,dp(66),1));
+        }
+        return dock;
     }
 
     private void mainAction(int i){
@@ -299,77 +553,530 @@ public class MainActivity extends Activity {
         }
     }
 
-    // -------- internal pages --------
-    private void openPage(String name){
-        tablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
-        FrameLayout root=backgroundFrame();
-        ScrollView sv=new ScrollView(this); sv.setFillViewport(true);
-        LinearLayout holder=new LinearLayout(this); holder.setOrientation(LinearLayout.VERTICAL); holder.setPadding(dp(tablet?26:14),dp(16),dp(tablet?26:14),dp(26));
-        LinearLayout bar=new LinearLayout(this); bar.setOrientation(LinearLayout.HORIZONTAL); bar.setGravity(Gravity.CENTER_VERTICAL);
-        Button back=darkButton("‹ WALLORA"); back.setOnClickListener(v->showDashboard()); bar.addView(back,new LinearLayout.LayoutParams(dp(tablet?150:116),dp(48)));
-        TextView title=brandText(name,tablet?26:20); title.setGravity(Gravity.CENTER_VERTICAL); LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,dp(50),1); tp.setMargins(dp(14),0,0,0); bar.addView(title,tp);
-        holder.addView(bar); holder.addView(space(12));
-        page=new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL); holder.addView(page,new LinearLayout.LayoutParams(-1,-2));
-        sv.addView(holder); root.addView(sv,new FrameLayout.LayoutParams(-1,-1)); setContentView(root);
+    private void enterSleepMode(){
+        powerOn=false;
+        expanded=false;
+        saveUiState();
+
+        rootFrame=new FrameLayout(this);
+        rootFrame.setBackgroundColor(Color.BLACK);
+
+        LinearLayout c=new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setGravity(Gravity.CENTER);
+        c.setPadding(dp(24),dp(24),dp(24),dp(24));
+
+        TextView logo=tv("WALLORA",tablet?42:34,Color.rgb(110,88,46));
+        logo.setTypeface(Typeface.DEFAULT_BOLD);
+        logo.setGravity(Gravity.CENTER);
+        c.addView(logo);
+
+        c.addView(space(26));
+
+        TextView off=tv(tr("ПРИНТЕР ВИМКНЕНО","TISKÁRNA VYPNUTA","PRINTER OFF"),18,Color.rgb(140,115,65));
+        off.setTypeface(Typeface.DEFAULT_BOLD);
+        off.setGravity(Gravity.CENTER);
+        c.addView(off);
+
+        TextView h=tv(tr("Натисніть на екран, щоб активувати","Klepnutím aktivujete","Tap screen to wake"),12,Color.DKGRAY);
+        h.setGravity(Gravity.CENTER);
+        c.addView(h);
+
+        rootFrame.addView(c,new FrameLayout.LayoutParams(-1,-1));
+        rootFrame.setOnClickListener(v->{
+            restoreBrightness();
+            showPowerScreen();
+        });
+        installGestures(rootFrame);
+        setContentView(rootFrame);
+        dimScreen();
     }
 
-    private void addPageCard(View v){ LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2); lp.setMargins(0,0,0,dp(12)); page.addView(v,lp); }
+    private void dimScreen(){
+        WindowManager.LayoutParams lp=getWindow().getAttributes();
+        lp.screenBrightness=0.02f;
+        getWindow().setAttributes(lp);
+    }
+
+    private void restoreBrightness(){
+        WindowManager.LayoutParams lp=getWindow().getAttributes();
+        lp.screenBrightness=WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        getWindow().setAttributes(lp);
+    }
+
+    private void showLanguageDialog(){
+        String[] labels={"Українська","Čeština","English"};
+        new AlertDialog.Builder(this)
+                .setTitle("Language / Jazyk / Мова")
+                .setItems(labels,(d,which)->{
+                    lang=which==0?"uk":which==1?"cz":"en";
+                    prefs.edit().putString("lang",lang).apply();
+                    if(powerOn) showDashboard(); else showPowerScreen();
+                }).show();
+    }
+
+    private void wallParamsDialog(){
+        LinearLayout l=new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setPadding(dp(20),dp(8),dp(20),0);
+        EditText w=number(tr("Ширина, cm","Šířka, cm","Width, cm"));
+        EditText h=number(tr("Висота, cm","Výška, cm","Height, cm"));
+        EditText dist=number(tr("Відстань, mm","Vzdálenost, mm","Distance, mm"));
+        w.setText(prefs.getString("wall_w","320"));
+        h.setText(prefs.getString("wall_h","250"));
+        dist.setText(prefs.getString("wall_dist","5"));
+        for(EditText e:new EditText[]{w,h,dist}){ l.addView(e,new LinearLayout.LayoutParams(-1,dp(56))); l.addView(space(8)); }
+
+        new AlertDialog.Builder(this)
+                .setTitle(tr("Параметри стіни","Parametry stěny","Wall parameters"))
+                .setView(l)
+                .setNegativeButton(tr("Скасувати","Zrušit","Cancel"),null)
+                .setPositiveButton(tr("Зберегти","Uložit","Save"),(d,x)->{
+                    try{
+                        double ww=num(w), hh=num(h);
+                        prefs.edit()
+                                .putString("wall_w",df.format(ww))
+                                .putString("wall_h",df.format(hh))
+                                .putString("wall_area",df.format(ww*hh/10000d))
+                                .putString("wall_dist",dist.getText().toString())
+                                .apply();
+                        showDashboard();
+                    }catch(Exception e){ toast(tr("Перевірте числа","Zkontrolujte čísla","Check numbers")); }
+                }).show();
+    }
 
     private void showPrintControl(){
-        openPage("PRINT CONTROL");
-        LinearLayout s=glassCard(18); s.addView(brandText("● ГОТОВ К РАБОТЕ",18)); s.addView(space(8)); s.addView(tv("BetterPrint и UltraPrint работают на Windows-ПК. Отсюда запускается удалённое управление.",13,MUTED)); addPageCard(s);
-        LinearLayout r=glassCard(18); r.addView(tv("Удалённое управление",16,WHITE)); r.addView(space(8)); Button a=goldButton("Открыть AnyDesk"); a.setOnClickListener(v->launchAny("com.anydesk.anydeskandroid")); r.addView(a,new LinearLayout.LayoutParams(-1,dp(52))); r.addView(space(8)); Button t=darkButton("Открыть TeamViewer"); t.setOnClickListener(v->launchAny("com.teamviewer.teamviewer.market.mobile")); r.addView(t,new LinearLayout.LayoutParams(-1,dp(52))); addPageCard(r);
-        LinearLayout q=glassCard(18); q.addView(tv("БЫСТРЫЕ ДЕЙСТВИЯ",13,GOLD_LIGHT)); String[] x={"Nozzle test","Очистка","Парковка","Калибровка","AUTO distance 5 mm"}; for(String z:x){ TextView e=tv("• "+z,14,WHITE); e.setPadding(0,dp(5),0,dp(5)); q.addView(e);} addPageCard(q);
-        Button tests=goldButton("Открыть чек-лист перед печатью"); tests.setOnClickListener(v->showTests()); addPageCard(tests);
-    }
+        shell(tr("КЕРУВАННЯ ДРУКОМ","OVLÁDÁNÍ TISKU","PRINT CONTROL"),true);
+        LinearLayout s=card();
+        s.addView(label(tr("СТАТУС","STAV","STATUS")));
+        TextView ready=tv("●  "+tr("ГОТОВО ДО РОБОТИ","PŘIPRAVENO","READY"),20,GREEN);
+        ready.setTypeface(Typeface.DEFAULT_BOLD);
+        s.addView(ready);
+        s.addView(tv(tr(
+                "BetterPrint / UltraPrint працюють на Windows-ПК. Тут запускається віддалене керування.",
+                "BetterPrint / UltraPrint běží na Windows PC. Zde spustíte vzdálené ovládání.",
+                "BetterPrint / UltraPrint run on the Windows PC. Remote control starts here."
+        ),13,MUTED));
+        addCard(s);
 
-    private ArrayList<String> loadList(String key){ String raw=prefs.getString(key,""); ArrayList<String> out=new ArrayList<>(); if(raw.isEmpty())return out; for(String x:raw.split("\\n---WALLORA---\\n",-1)) if(!x.trim().isEmpty()) out.add(x); return out; }
-    private void saveList(String key,ArrayList<String> list){ StringBuilder b=new StringBuilder(); for(int i=0;i<list.size();i++){ if(i>0)b.append("\n---WALLORA---\n"); b.append(list.get(i)); } prefs.edit().putString(key,b.toString()).apply(); }
-    private String[] parts(String s,int count){ String[] a=s.split("\\|",-1); String[] o=new String[count]; for(int i=0;i<count;i++)o[i]=i<a.length?a[i]:""; return o; }
-    private String clean(String s){ return s.replace("|","/").replace("\n"," ").trim(); }
+        Button any=button("AnyDesk");
+        any.setOnClickListener(v->launchAny("com.anydesk.anydeskandroid"));
+        addCard(any);
 
-    private void showOrders(){
-        openPage("ORDERS"); Button add=goldButton("＋ Новый заказ"); add.setOnClickListener(v->orderDialog()); addPageCard(add);
-        ArrayList<String> list=loadList("orders"); if(list.isEmpty()){ LinearLayout e=glassCard(18); e.addView(tv("Заказов пока нет.",15,MUTED)); addPageCard(e); return; }
-        Collections.reverse(list); for(String rec:list){ String[] p=parts(rec,7); LinearLayout c=glassCard(18); TextView n=brandText(p[0],18); c.addView(n); c.addView(tv(p[1]+"  •  "+p[2]+" × "+p[3]+" cm  •  "+p[4]+" m²",13,WHITE)); c.addView(tv("Цена: "+p[5]+" Kč  •  "+p[6],12,MUTED)); addPageCard(c); }
-    }
-
-    private void orderDialog(){
-        LinearLayout l=new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); l.setPadding(dp(18),dp(6),dp(18),0);
-        EditText name=edit("Проект / клиент"),w=number("Ширина, cm"),h=number("Высота, cm"),rate=number("Цена за m², Kč"),state=edit("Статус");
-        for(EditText e:new EditText[]{name,w,h,rate,state}){ l.addView(e,new LinearLayout.LayoutParams(-1,dp(56))); l.addView(space(8)); }
-        new AlertDialog.Builder(this).setTitle("Новый заказ").setView(l).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",(d,x)->{ try{ double ww=num(w),hh=num(h),rr=rate.getText().toString().trim().isEmpty()?0:num(rate),area=ww*hh/10000d,total=area*rr; ArrayList<String>a=loadList("orders"); a.add(clean(name.getText().toString())+"|"+new SimpleDateFormat("dd.MM.yyyy",Locale.getDefault()).format(new Date())+"|"+df.format(ww)+"|"+df.format(hh)+"|"+df.format(area)+"|"+df.format(total)+"|"+clean(state.getText().toString())); saveList("orders",a); showOrders(); }catch(Exception e){ toast("Проверь размеры"); }}).show();
+        Button team=button("TeamViewer");
+        team.setOnClickListener(v->launchAny("com.teamviewer.teamviewer.market.mobile"));
+        addCard(team);
     }
 
     private void showClients(){
-        openPage("CLIENTS"); Button add=goldButton("＋ Добавить клиента"); add.setOnClickListener(v->clientDialog()); addPageCard(add);
-        ArrayList<String> list=loadList("clients"); if(list.isEmpty()){ LinearLayout e=glassCard(18); e.addView(tv("Клиентская база пустая.",15,MUTED)); addPageCard(e); return; }
-        Collections.reverse(list); for(String rec:list){ String[] p=parts(rec,4); LinearLayout c=glassCard(18); c.addView(brandText(p[0],18)); c.addView(tv(p[1]+(p[2].isEmpty()?"":"  •  "+p[2]),13,WHITE)); if(!p[3].isEmpty())c.addView(tv(p[3],12,MUTED)); if(!p[1].isEmpty())c.setOnClickListener(v->dial(p[1])); addPageCard(c); }
+        shell(tr("КЛІЄНТИ","KLIENTI","CLIENTS"),true);
+
+        Button add=goldButton("＋ "+tr("Додати клієнта","Přidat klienta","Add client"));
+        add.setOnClickListener(v->clientDialog());
+        addCard(add);
+
+        ArrayList<String> list=loadList("clients");
+        if(list.isEmpty()){
+            LinearLayout e=card();
+            e.addView(tv(tr("Клієнтів поки немає.","Zatím žádní klienti.","No clients yet."),14,MUTED));
+            addCard(e);
+            return;
+        }
+
+        for(int i=list.size()-1;i>=0;i--){
+            String[] p=parts(list.get(i),5);
+            LinearLayout c=card();
+
+            LinearLayout r=row();
+            ImageView img=imageBox(88,88);
+            setImageUri(img,p[4]);
+            r.addView(img,new LinearLayout.LayoutParams(dp(88),dp(88)));
+
+            LinearLayout text=new LinearLayout(this);
+            text.setOrientation(LinearLayout.VERTICAL);
+            text.setPadding(dp(12),0,0,0);
+            TextView n=tv(p[0],18,GOLD_LIGHT); n.setTypeface(Typeface.DEFAULT_BOLD); text.addView(n);
+            text.addView(tv(p[1],14,Color.WHITE));
+            if(!p[2].isEmpty()) text.addView(tv(p[2],12,MUTED));
+            if(!p[3].isEmpty()) text.addView(tv(p[3],12,MUTED));
+            r.addView(text,new LinearLayout.LayoutParams(0,-2,1));
+
+            c.addView(r);
+            final String phone=p[1];
+            if(!phone.isEmpty()) c.setOnClickListener(v->dial(phone));
+            addCard(c);
+        }
     }
 
     private void clientDialog(){
-        LinearLayout l=new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); l.setPadding(dp(18),dp(6),dp(18),0);
-        EditText name=edit("Имя / компания"),phone=edit("Телефон"),city=edit("Город / адрес"),note=edit("Комментарий"); phone.setInputType(InputType.TYPE_CLASS_PHONE);
-        for(EditText e:new EditText[]{name,phone,city,note}){ l.addView(e,new LinearLayout.LayoutParams(-1,dp(56))); l.addView(space(8)); }
-        new AlertDialog.Builder(this).setTitle("Новый клиент").setView(l).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",(d,x)->{ if(name.getText().toString().trim().isEmpty()){toast("Укажи имя клиента");return;} ArrayList<String>a=loadList("clients"); a.add(clean(name.getText().toString())+"|"+clean(phone.getText().toString())+"|"+clean(city.getText().toString())+"|"+clean(note.getText().toString())); saveList("clients",a); showClients(); }).show();
+        pendingClientPhoto=null;
+        LinearLayout l=new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setPadding(dp(20),dp(8),dp(20),0);
+
+        EditText name=edit(tr("Ім’я / компанія","Jméno / firma","Name / company"));
+        EditText phone=edit(tr("Телефон","Telefon","Phone"));
+        phone.setInputType(InputType.TYPE_CLASS_PHONE);
+        EditText city=edit(tr("Місто / адреса","Město / adresa","City / address"));
+        EditText note=edit(tr("Що робимо / примітка","Co děláme / poznámka","Job / note"));
+
+        clientPhotoPreview=imageBox(180,120);
+        Button pick=button("📷 "+tr("Додати фото замовлення","Přidat fotku zakázky","Add order photo"));
+        pick.setOnClickListener(v->pickImage(PICK_CLIENT_PHOTO));
+
+        for(EditText e:new EditText[]{name,phone,city,note}){
+            l.addView(e,new LinearLayout.LayoutParams(-1,dp(56)));
+            l.addView(space(8));
+        }
+        l.addView(clientPhotoPreview,new LinearLayout.LayoutParams(-1,dp(120)));
+        l.addView(space(8));
+        l.addView(pick);
+
+        new AlertDialog.Builder(this)
+                .setTitle(tr("Новий клієнт","Nový klient","New client"))
+                .setView(l)
+                .setNegativeButton(tr("Скасувати","Zrušit","Cancel"),null)
+                .setPositiveButton(tr("Зберегти","Uložit","Save"),(d,x)->{
+                    if(name.getText().toString().trim().isEmpty()){
+                        toast(tr("Вкажіть ім’я","Zadejte jméno","Enter a name"));
+                        return;
+                    }
+                    ArrayList<String> a=loadList("clients");
+                    a.add(clean(name.getText().toString())+"|"+
+                            clean(phone.getText().toString())+"|"+
+                            clean(city.getText().toString())+"|"+
+                            clean(note.getText().toString())+"|"+
+                            (pendingClientPhoto==null?"":pendingClientPhoto.toString()));
+                    saveList("clients",a);
+                    showClients();
+                }).show();
     }
 
-    private void showCalculator(){
-        openPage("CALCULATOR"); LinearLayout c=glassCard(18); EditText w=number("Ширина стены, cm"),h=number("Высота стены, cm"),rate=number("Цена за m², Kč"); TextView r=brandText("Введите размеры",20); Button go=goldButton("Рассчитать"); for(EditText e:new EditText[]{w,h,rate}){c.addView(e,new LinearLayout.LayoutParams(-1,dp(56)));c.addView(space(8));} c.addView(go,new LinearLayout.LayoutParams(-1,dp(52))); c.addView(space(14)); c.addView(r); addPageCard(c); go.setOnClickListener(v->{try{double ww=num(w),hh=num(h),rr=rate.getText().toString().trim().isEmpty()?0:num(rate),area=ww*hh/10000d; r.setText(df.format(area)+" m²"+(rr>0?"  •  "+df.format(area*rr)+" Kč":"")); prefs.edit().putString("last_rate",rate.getText().toString()).apply();}catch(Exception e){toast("Проверь числа");}}); rate.setText(prefs.getString("last_rate",""));
+    private void showOrderDetails(int index){
+        ArrayList<String> list=loadList("orders");
+        if(index<0 || index>=list.size()){ showDashboard(); return; }
+        String[] p=parts(list.get(index),13);
+
+        shell(tr("ПОТОЧНЕ ЗАМОВЛЕННЯ","AKTUÁLNÍ ZAKÁZKA","CURRENT ORDER"),true);
+
+        LinearLayout info=card();
+        TextView n=tv(p[0],22,GOLD_LIGHT); n.setTypeface(Typeface.DEFAULT_BOLD); info.addView(n);
+        info.addView(tv(p[2]+" × "+p[3]+" cm  •  "+p[4]+" m²",14,Color.WHITE));
+        info.addView(tv(tr("Ціна: ","Cena: ","Price: ")+p[5]+" Kč",18,GOLD_LIGHT));
+        info.addView(tv(tr("Статус: ","Stav: ","Status: ")+statusLabel(p[6]),14,Color.WHITE));
+        if(!p[7].isEmpty()) info.addView(tv(tr("Примітка: ","Poznámka: ","Note: ")+p[7],13,MUTED));
+        addCard(info);
+
+        LinearLayout photos=card();
+        photos.addView(label(tr("ФОТО ПРОЄКТУ","FOTKY PROJEKTU","PROJECT PHOTOS")));
+
+        GridLayout g=new GridLayout(this);
+        g.setColumnCount(tablet?3:1);
+        addPhotoTile(g,tr("ІДЕЯ","NÁPAD","IDEA"),p[8]);
+        addPhotoTile(g,tr("ДО","PŘED","BEFORE"),p[9]);
+        addPhotoTile(g,tr("ПІСЛЯ","PO","AFTER"),p[10]);
+        photos.addView(g);
+
+        Button edit=goldButton("✎ "+tr("Редагувати замовлення","Upravit zakázku","Edit order"));
+        final int idx=index;
+        edit.setOnClickListener(v->orderDialog(p,idx));
+        photos.addView(space(10));
+        photos.addView(edit);
+
+        addCard(photos);
     }
 
-    private void showTests(){
-        openPage("PRINTER TESTS"); String[] tests={"Проверить чернила и воздух в магистралях","Сделать Nozzle Test","Проверить Vertical / Horizontal Correct","Проверить ровность стены","AUTO distance: стабильный зазор","Сделать цветовой тест 10×10 cm","Проверить Mirror / ориентацию","Зафиксировать точку старта","Проверить питание и кабели","Запускать основной рисунок"}; for(String x:tests){ LinearLayout c=glassCard(16); CheckBox cb=new CheckBox(this); cb.setText(x); cb.setTextColor(WHITE); cb.setTextSize(14); cb.setButtonTintList(ColorStateList.valueOf(GOLD_LIGHT)); c.addView(cb); addPageCard(c);} }
+    private String statusLabel(String s){
+        if("progress".equals(s)) return tr("Виконується","Probíhá","In progress");
+        if("done".equals(s)) return tr("Завершено","Dokončeno","Completed");
+        return tr("Активне","Aktivní","Active");
+    }
+
+    private void addPhotoTile(GridLayout g,String title,String uri){
+        LinearLayout c=card();
+        TextView t=label(title); t.setGravity(Gravity.CENTER); c.addView(t);
+        ImageView img=imageBox(170,130);
+        setImageUri(img,uri);
+        c.addView(img,new LinearLayout.LayoutParams(-1,dp(130)));
+        GridLayout.LayoutParams gp=new GridLayout.LayoutParams();
+        gp.width=0; gp.height=-2;
+        gp.columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1,1f);
+        gp.setMargins(dp(4),dp(4),dp(4),dp(4));
+        g.addView(c,gp);
+    }
+
+    private void orderDialog(String[] existing, int index){
+        pendingIdeaPhoto = existing!=null && !existing[8].isEmpty()?Uri.parse(existing[8]):null;
+        pendingBeforePhoto = existing!=null && !existing[9].isEmpty()?Uri.parse(existing[9]):null;
+        pendingAfterPhoto = existing!=null && !existing[10].isEmpty()?Uri.parse(existing[10]):null;
+
+        ScrollView sv=new ScrollView(this);
+        LinearLayout l=new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setPadding(dp(20),dp(8),dp(20),dp(10));
+        sv.addView(l);
+
+        EditText name=edit(tr("Назва проєкту / клієнт","Název projektu / klient","Project / client"));
+        EditText w=number(tr("Ширина, cm","Šířka, cm","Width, cm"));
+        EditText h=number(tr("Висота, cm","Výška, cm","Height, cm"));
+        EditText price=number(tr("Ціна за замовлення, Kč","Cena zakázky, Kč","Order price, Kč"));
+        EditText note=edit(tr("Примітка","Poznámka","Note"));
+
+        if(existing!=null){
+            name.setText(existing[0]); w.setText(existing[2]); h.setText(existing[3]); price.setText(existing[5]); note.setText(existing[7]);
+        }
+
+        for(EditText e:new EditText[]{name,w,h,price,note}){
+            l.addView(e,new LinearLayout.LayoutParams(-1,dp(56)));
+            l.addView(space(8));
+        }
+
+        ideaPreview=imageBox(180,110); setImageUri(ideaPreview, existing==null?"":existing[8]);
+        beforePreview=imageBox(180,110); setImageUri(beforePreview, existing==null?"":existing[9]);
+        afterPreview=imageBox(180,110); setImageUri(afterPreview, existing==null?"":existing[10]);
+
+        addPickerRow(l,tr("Ідея / референс","Nápad / reference","Idea / reference"),ideaPreview,PICK_IDEA_PHOTO);
+        addPickerRow(l,tr("Фото ДО","Foto PŘED","BEFORE photo"),beforePreview,PICK_BEFORE_PHOTO);
+        addPickerRow(l,tr("Фото ПІСЛЯ","Foto PO","AFTER photo"),afterPreview,PICK_AFTER_PHOTO);
+
+        String currentStatus=existing==null?"active":existing[6];
+        RadioGroup statuses=new RadioGroup(this);
+        statuses.setOrientation(RadioGroup.HORIZONTAL);
+        String[] svv={"active","progress","done"};
+        String[] sl={tr("Активне","Aktivní","Active"),tr("Виконується","Probíhá","In progress"),tr("Завершено","Dokončeno","Completed")};
+        for(int i=0;i<3;i++){
+            RadioButton rb=new RadioButton(this);
+            rb.setId(1000+i);
+            rb.setText(sl[i]);
+            rb.setTextColor(Color.WHITE);
+            rb.setButtonTintList(android.content.res.ColorStateList.valueOf(GOLD_LIGHT));
+            if(svv[i].equals(currentStatus)) rb.setChecked(true);
+            statuses.addView(rb,new RadioGroup.LayoutParams(0,dp(52),1));
+        }
+        l.addView(statuses);
+
+        new AlertDialog.Builder(this)
+                .setTitle(existing==null?tr("Нове замовлення","Nová zakázka","New order"):tr("Редагувати замовлення","Upravit zakázku","Edit order"))
+                .setView(sv)
+                .setNegativeButton(tr("Скасувати","Zrušit","Cancel"),null)
+                .setPositiveButton(tr("Зберегти","Uložit","Save"),(d,x)->{
+                    try{
+                        double ww=num(w),hh=num(h);
+                        double area=ww*hh/10000d;
+                        String stat="active";
+                        int checked=statuses.getCheckedRadioButtonId();
+                        if(checked==1001) stat="progress";
+                        if(checked==1002) stat="done";
+
+                        String[] p=new String[13];
+                        p[0]=clean(name.getText().toString());
+                        p[1]=new SimpleDateFormat("dd.MM.yyyy",Locale.getDefault()).format(new Date());
+                        p[2]=df.format(ww);
+                        p[3]=df.format(hh);
+                        p[4]=df.format(area);
+                        p[5]=clean(price.getText().toString());
+                        p[6]=stat;
+                        p[7]=clean(note.getText().toString());
+                        p[8]=pendingIdeaPhoto==null?"":pendingIdeaPhoto.toString();
+                        p[9]=pendingBeforePhoto==null?"":pendingBeforePhoto.toString();
+                        p[10]=pendingAfterPhoto==null?"":pendingAfterPhoto.toString();
+                        p[11]="";
+                        p[12]="";
+
+                        ArrayList<String> list=loadList("orders");
+                        if(index>=0 && index<list.size()) list.set(index,join(p));
+                        else list.add(join(p));
+                        saveList("orders",list);
+
+                        prefs.edit()
+                                .putString("wall_w",p[2])
+                                .putString("wall_h",p[3])
+                                .putString("wall_area",p[4])
+                                .apply();
+
+                        showDashboard();
+                    }catch(Exception e){ toast(tr("Перевірте ширину й висоту","Zkontrolujte šířku a výšku","Check width and height")); }
+                }).show();
+    }
+
+    private void addPickerRow(LinearLayout parent,String title,ImageView preview,int request){
+        LinearLayout c=card();
+        c.addView(label(title));
+        c.addView(preview,new LinearLayout.LayoutParams(-1,dp(110)));
+        Button b=button("📷 "+tr("Вибрати фото","Vybrat fotku","Choose photo"));
+        b.setOnClickListener(v->pickImage(request));
+        c.addView(space(6));
+        c.addView(b);
+        parent.addView(c,new LinearLayout.LayoutParams(-1,-2));
+        parent.addView(space(8));
+    }
+
+    private ImageView imageBox(int w,int h){
+        ImageView img=new ImageView(this);
+        img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        img.setBackground(bg(Color.rgb(20,20,20),12,Color.rgb(80,62,32),1));
+        img.setImageDrawable(null);
+        return img;
+    }
+
+    private void setImageUri(ImageView img,String uri){
+        if(img==null) return;
+        if(uri==null || uri.trim().isEmpty()){
+            img.setImageDrawable(null);
+            img.setBackground(bg(Color.rgb(20,20,20),12,Color.rgb(80,62,32),1));
+            return;
+        }
+        try{
+            img.setImageURI(Uri.parse(uri));
+        }catch(Exception e){
+            img.setImageDrawable(null);
+        }
+    }
+
+    private void pickImage(int requestCode){
+        Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("image/*");
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i,requestCode);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode,int resultCode,Intent data){
+        super.onActivityResult(requestCode,resultCode,data);
+        if(resultCode!=RESULT_OK || data==null || data.getData()==null) return;
+
+        Uri uri=data.getData();
+        try{
+            getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }catch(Exception ignored){}
+
+        if(requestCode==PICK_CLIENT_PHOTO){
+            pendingClientPhoto=uri;
+            if(clientPhotoPreview!=null) clientPhotoPreview.setImageURI(uri);
+        }else if(requestCode==PICK_IDEA_PHOTO){
+            pendingIdeaPhoto=uri;
+            if(ideaPreview!=null) ideaPreview.setImageURI(uri);
+        }else if(requestCode==PICK_BEFORE_PHOTO){
+            pendingBeforePhoto=uri;
+            if(beforePreview!=null) beforePreview.setImageURI(uri);
+        }else if(requestCode==PICK_AFTER_PHOTO){
+            pendingAfterPhoto=uri;
+            if(afterPreview!=null) afterPreview.setImageURI(uri);
+        }
+    }
+
+    private ArrayList<String> loadList(String key){
+        String raw=prefs.getString(key,"");
+        ArrayList<String> out=new ArrayList<>();
+        if(raw.isEmpty()) return out;
+        for(String x:raw.split("\\n---WALLORA---\\n",-1))
+            if(!x.trim().isEmpty()) out.add(x);
+        return out;
+    }
+
+    private void saveList(String key,ArrayList<String> list){
+        StringBuilder b=new StringBuilder();
+        for(int i=0;i<list.size();i++){
+            if(i>0)b.append("\n---WALLORA---\n");
+            b.append(list.get(i));
+        }
+        prefs.edit().putString(key,b.toString()).apply();
+    }
+
+    private String[] parts(String s,int count){
+        String[] a=s.split("\\|",-1);
+        String[] o=new String[count];
+        for(int i=0;i<count;i++) o[i]=i<a.length?a[i]:"";
+        return o;
+    }
+
+    private String join(String[] a){
+        StringBuilder b=new StringBuilder();
+        for(int i=0;i<a.length;i++){
+            if(i>0)b.append("|");
+            b.append(a[i]==null?"":a[i]);
+        }
+        return b.toString();
+    }
+
+    private String clean(String s){
+        return s.replace("|","/").replace("\n"," ").trim();
+    }
+
+    private double num(EditText e){
+        return Double.parseDouble(e.getText().toString().trim().replace(',','.'));
+    }
 
     private void showSocial(){
-        openPage("SOCIAL"); String[][] apps={{"Instagram","com.instagram.android"},{"TikTok","com.zhiliaoapp.musically"},{"Threads","com.instagram.barcelona"},{"Photos","com.google.android.apps.photos"},{"Canva","com.canva.editor"}}; for(String[] a:apps){ Button b=darkButton(a[0]); b.setOnClickListener(v->launchAny(a[1])); addPageCard(b);} }
-
-    private void showSettings(){
-        openPage("SETTINGS"); Button sys=darkButton("Открыть настройки Android"); sys.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_SETTINGS))); addPageCard(sys); Button home=darkButton("Выбор домашнего экрана"); home.setOnClickListener(v->{try{startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}); addPageCard(home); LinearLayout a=glassCard(18); a.addView(brandText("WALLORA CONTROL 4.0",18)); a.addView(tv("Premium launcher для Redmi Pad 2 и Xiaomi 17T",13,MUTED)); addPageCard(a);
+        shell(tr("СОЦМЕРЕЖІ","SOCIÁLNÍ SÍTĚ","SOCIAL"),true);
+        String[][] apps={
+                {"Instagram","com.instagram.android"},
+                {"TikTok","com.zhiliaoapp.musically"},
+                {"Threads","com.instagram.barcelona"},
+                {"Photos","com.google.android.apps.photos"},
+                {"Canva","com.canva.editor"}
+        };
+        for(String[] a:apps){
+            Button b=button(a[0]);
+            b.setOnClickListener(v->launchAny(a[1]));
+            addCard(b);
+        }
     }
 
-    private double num(EditText e){ return Double.parseDouble(e.getText().toString().trim().replace(',','.')); }
-    private void dial(String p){ try{startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:"+Uri.encode(p))));}catch(Exception e){toast("Не удалось открыть телефон");} }
-    private void launchAny(String... packages){ PackageManager pm=getPackageManager(); for(String p:packages){ try{ Intent i=pm.getLaunchIntentForPackage(p); if(i!=null){ startActivity(i); return; }}catch(Exception ignored){} } toast("Приложение не установлено"); }
-    private void toast(String s){ Toast.makeText(this,s,Toast.LENGTH_SHORT).show(); }
+    private void showSettings(){
+        shell(tr("НАЛАШТУВАННЯ","NASTAVENÍ","SETTINGS"),true);
+
+        Button language=button("🌐 "+tr("Мова","Jazyk","Language"));
+        language.setOnClickListener(v->showLanguageDialog());
+        addCard(language);
+
+        Button sys=button(tr("Відкрити налаштування Android","Otevřít nastavení Android","Open Android settings"));
+        sys.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_SETTINGS)));
+        addCard(sys);
+
+        Button home=button(tr("Вибір домашнього екрана / Launcher","Výběr domovské obrazovky / Launcher","Choose home app / Launcher"));
+        home.setOnClickListener(v->{
+            try{ startActivity(new Intent(Settings.ACTION_HOME_SETTINGS)); }
+            catch(Exception e){ startActivity(new Intent(Settings.ACTION_SETTINGS)); }
+        });
+        addCard(home);
+
+        Button clear=button(tr("Очистити локальні дані WALLORA","Vymazat lokální data WALLORA","Clear WALLORA local data"));
+        clear.setOnClickListener(v->new AlertDialog.Builder(this)
+                .setTitle(tr("Очистити дані?","Vymazat data?","Clear data?"))
+                .setMessage(tr("Будуть видалені клієнти, замовлення та налаштування.","Budou smazáni klienti, zakázky a nastavení.","Clients, orders and settings will be deleted."))
+                .setNegativeButton(tr("Скасувати","Zrušit","Cancel"),null)
+                .setPositiveButton(tr("Видалити","Smazat","Delete"),(d,x)->{
+                    prefs.edit().clear().apply();
+                    lang="uk"; powerOn=false; expanded=false;
+                    showPowerScreen();
+                }).show());
+        addCard(clear);
+
+        LinearLayout about=card();
+        about.addView(label(tr("ВЕРСІЯ","VERZE","VERSION")));
+        about.addView(tv("WALLORA Control 6.0\nUA / CZ / EN\nPower Mode • Gestures • Clients + photos • Orders + idea/before/after",13,Color.WHITE));
+        addCard(about);
+    }
+
+    private void dial(String p){
+        try{ startActivity(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(p)))); }
+        catch(Exception e){ toast(tr("Не вдалося відкрити телефон","Telefon se nepodařilo otevřít","Could not open phone")); }
+    }
+
+    private void launchAny(String... packages){
+        PackageManager pm=getPackageManager();
+        for(String p:packages){
+            try{
+                Intent i=pm.getLaunchIntentForPackage(p);
+                if(i!=null){ startActivity(i); return; }
+            }catch(Exception ignored){}
+        }
+        toast(tr("Застосунок не встановлено","Aplikace není nainstalována","App is not installed"));
+    }
+
+    private void toast(String s){
+        Toast.makeText(this,s,Toast.LENGTH_SHORT).show();
+    }
 }
